@@ -50,7 +50,6 @@ class TestProductModel(unittest.TestCase):
         app.config["DEBUG"] = False
         app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URI
         app.logger.setLevel(logging.CRITICAL)
-        Product.init_db(app)
 
     @classmethod
     def tearDownClass(cls):
@@ -101,21 +100,21 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(new_product.available, product.available)
         self.assertEqual(new_product.category, product.category)
 
-    #
-    # ADD YOUR TEST CASES HERE
-    #
     def test_read_a_product(self):
         """It should Read a Product"""
         product = ProductFactory()
         product.id = None
         product.create()
         self.assertIsNotNone(product.id)
-        # Fetch it back
         found_product = Product.find(product.id)
+        self.assertIsNotNone(found_product)
         self.assertEqual(found_product.id, product.id)
         self.assertEqual(found_product.name, product.name)
         self.assertEqual(found_product.description, product.description)
         self.assertEqual(found_product.price, product.price)
+        self.assertEqual(found_product.available, product.available)
+        self.assertEqual(found_product.category, product.category)
+        self.assertIsNone(Product.find(product.id + 100))
 
     def test_update_a_product(self):
         """It should Update a Product"""
@@ -123,21 +122,26 @@ class TestProductModel(unittest.TestCase):
         product.id = None
         product.create()
         self.assertIsNotNone(product.id)
-        product.description = 'hellow'
         original_id = product.id
+        product.name = "Updated product"
+        product.description = "An updated product description"
+        product.price = Decimal("123.45")
+        product.available = not product.available
+        product.category = Category.TOOLS
         product.update()
         self.assertEqual(product.id, original_id)
-        self.assertEqual(product.description, "hellow")
-        # Fetch it back and make sure the id hasn't changed
-        # but the data did change
-        products = Product.all()
-        self.assertEqual(len(products), 1)
-        self.assertEqual(products[0].id, original_id)
-        self.assertEqual(products[0].description, "hellow")
-        # Update with empty ID
-        product.id = None
+        db.session.expire_all()
+        updated_product = Product.find(original_id)
+        self.assertEqual(updated_product.name, "Updated product")
+        self.assertEqual(updated_product.description, "An updated product description")
+        self.assertEqual(updated_product.price, Decimal("123.45"))
+        self.assertEqual(updated_product.available, product.available)
+        self.assertEqual(updated_product.category, Category.TOOLS)
+
+        invalid_product = ProductFactory()
+        invalid_product.id = None
         with self.assertRaises(DataValidationError):
-            product.update()
+            invalid_product.update()
 
     def test_delete_a_product(self):
         """It should Delete a Product"""
@@ -147,18 +151,18 @@ class TestProductModel(unittest.TestCase):
         # delete the product and make sure it isn't in the database
         product.delete()
         self.assertEqual(len(Product.all()), 0)
+        self.assertIsNone(Product.find(product.id))
 
     def test_list_all_products(self):
         """It should List all Products in the database"""
         products = Product.all()
         self.assertEqual(products, [])
-        # Create 5 Products
-        for _ in range(5):
-            product = ProductFactory()
+        expected = ProductFactory.create_batch(5)
+        for product in expected:
             product.create()
-        # See if we get back 5 products
         products = Product.all()
         self.assertEqual(len(products), 5)
+        self.assertEqual({product.id for product in products}, {product.id for product in expected})
 
     def test_find_by_name(self):
         """It should Find a Product by Name"""
@@ -169,8 +173,10 @@ class TestProductModel(unittest.TestCase):
         count = len([product for product in products if product.name == name])
         found = Product.find_by_name(name)
         self.assertEqual(found.count(), count)
+        self.assertGreater(count, 0)
         for product in found:
             self.assertEqual(product.name, name)
+        self.assertEqual(Product.find_by_name("missing product").count(), 0)
 
     def test_find_by_category(self):
         """It should Find Products by Category"""
@@ -181,6 +187,7 @@ class TestProductModel(unittest.TestCase):
         count = len([product for product in products if product.category == category])
         found = Product.find_by_category(category)
         self.assertEqual(found.count(), count)
+        self.assertGreater(count, 0)
         for product in found:
             self.assertEqual(product.category, category)
 
@@ -193,6 +200,7 @@ class TestProductModel(unittest.TestCase):
         count = len([product for product in products if product.available == available])
         found = Product.find_by_availability(available)
         self.assertEqual(found.count(), count)
+        self.assertGreater(count, 0)
         for product in found:
             self.assertEqual(product.available, available)
 
@@ -202,5 +210,45 @@ class TestProductModel(unittest.TestCase):
         product.id = None
         product.create()
         d = product.serialize()
-        product.delete()
-        
+        self.assertEqual(d["id"], product.id)
+        self.assertEqual(d["name"], product.name)
+        self.assertEqual(d["description"], product.description)
+        self.assertEqual(d["price"], str(product.price))
+        self.assertEqual(d["available"], product.available)
+        self.assertEqual(d["category"], product.category.name)
+
+    def test_deserialize_rejects_invalid_products(self):
+        """It should reject incomplete and invalid product data."""
+        product = ProductFactory()
+        with self.assertRaises(DataValidationError):
+            product.deserialize({"name": "Missing fields"})
+        with self.assertRaises(DataValidationError):
+            product.deserialize(
+                {
+                    "name": "Invalid product",
+                    "description": "Invalid category",
+                    "price": "12.50",
+                    "available": True,
+                    "category": "NOT_A_CATEGORY",
+                }
+            )
+        with self.assertRaises(DataValidationError):
+            product.deserialize(
+                {
+                    "name": "Invalid product",
+                    "description": "Invalid availability",
+                    "price": "12.50",
+                    "available": "yes",
+                    "category": Category.FOOD.name,
+                }
+            )
+        with self.assertRaises(DataValidationError):
+            product.deserialize(
+                {
+                    "name": "Invalid product",
+                    "description": "Invalid price",
+                    "price": "not-a-price",
+                    "available": True,
+                    "category": Category.FOOD.name,
+                }
+            )

@@ -6,7 +6,7 @@ from selenium import webdriver
 
 WAIT_SECONDS = int(getenv('WAIT_SECONDS', '30'))
 BASE_URL = getenv('BASE_URL', 'http://localhost:8080')
-DRIVER = getenv('DRIVER', 'firefox').lower()
+DRIVER = getenv('DRIVER', 'chrome').lower()
 
 
 def before_all(context):
@@ -24,7 +24,10 @@ def before_all(context):
 
 def after_all(context):
     """ Executed after all tests """
-    context.driver.quit()
+    driver = getattr(context, "driver", None)
+    if driver is not None:
+        driver.quit()
+
 
 ######################################################################
 # Utility functions to create web drivers
@@ -42,5 +45,4 @@ def get_firefox():
     """Creates a headless Firefox driver"""
     options = webdriver.FirefoxOptions()
     options.add_argument("--headless")
-    return webdriver.Firefox(options=options)    
-    
+    return webdriver.Firefox(options=options)

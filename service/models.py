@@ -30,7 +30,7 @@ available (boolean) - True for products that are available for adoption
 """
 import logging
 from enum import Enum
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
@@ -133,6 +133,8 @@ class Product(db.Model):
             self.name = data["name"]
             self.description = data["description"]
             self.price = Decimal(data["price"])
+            if not self.price.is_finite():
+                raise DataValidationError("Invalid product: price must be a finite decimal")
             if isinstance(data["available"], bool):
                 self.available = data["available"]
             else:
@@ -143,6 +145,8 @@ class Product(db.Model):
             self.category = getattr(Category, data["category"])  # create enum from string
         except AttributeError as error:
             raise DataValidationError("Invalid attribute: " + error.args[0]) from error
+        except InvalidOperation as error:
+            raise DataValidationError("Invalid product: price must be a decimal") from error
         except KeyError as error:
             raise DataValidationError("Invalid product: missing " + error.args[0]) from error
         except TypeError as error:
@@ -187,7 +191,7 @@ class Product(db.Model):
 
         """
         logger.info("Processing lookup for id %s ...", product_id)
-        return cls.query.get(product_id)
+        return db.session.get(cls, product_id)
 
     @classmethod
     def find_by_name(cls, name: str) -> list:

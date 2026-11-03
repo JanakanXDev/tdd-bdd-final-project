@@ -38,6 +38,26 @@ features/steps/load_steps.py
 
 You will be given partial implementations in each of these files to get you started. Use those implementations as examples of the code you should write.
 
+## Running the tests
+
+Run the model and REST API tests, including coverage, from the activated project environment:
+
+```bash
+nosetests -v --with-coverage --cover-package=service
+coverage report -m
+```
+
+The setup script starts the PostgreSQL database. To run the Selenium scenarios, start
+the application in one terminal and run Behave in another:
+
+```bash
+honcho start
+behave features/products.feature
+```
+
+Behave uses headless Chrome by default. Set `DRIVER=firefox` to use Firefox instead,
+or set `BASE_URL` if the application is running at a different address.
+
 ## License
 
 Licensed under the Apache License. See [LICENSE](/LICENSE)
